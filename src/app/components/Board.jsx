@@ -7,13 +7,12 @@ import PriorityFilter from './PriorityFilter';
 import SearchBox from './SearchBox';
 import MyQueueSummary from './MyQueueSummary';
 import StatusMessage from './StatusMessage';
-// --- NEW IMPORT ---
 import {
   statusTransitions,
   priorityTransitions,
 } from '../lib/severity';
 
-// --- NEW HELPER FUNCTIONS ---
+// Helper functions
 function getRandomItem(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
@@ -21,9 +20,9 @@ function getRandomItem(arr) {
 function getRandomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
-// ----------------------------
 
 export default function Board() {
+  // --- All your state (tickets, loading, etc.) ---
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -31,7 +30,7 @@ export default function Board() {
   const [search, setSearch] = useState('');
   const [queue, setQueue] = useState({});
 
-  // Effect 1: Fetch tickets on mount
+  // --- Effect 1: Fetch tickets ---
   useEffect(() => {
     async function fetchTickets() {
       try {
@@ -51,53 +50,38 @@ export default function Board() {
     fetchTickets();
   }, []);
 
-  // --- NEW EFFECT #2: Simulate live updates ---
+  // --- Effect 2: Simulate live updates ---
   useEffect(() => {
     const intervalId = setInterval(() => {
       setTickets((currentTickets) => {
         if (currentTickets.length === 0) return currentTickets;
-
-        // Pick a random ticket to update
         const ticketIndex = Math.floor(Math.random() * currentTickets.length);
         const ticketToUpdate = currentTickets[ticketIndex];
-
-        // Create an immutable copy
         const newTickets = [...currentTickets];
         let updatedTicket = { ...ticketToUpdate };
 
-        // Randomly decide to update status or priority
         if (Math.random() > 0.5) {
-          // Update Status
           const possibleNewStatuses =
             statusTransitions[updatedTicket.status] || [];
           if (possibleNewStatuses.length > 0) {
             updatedTicket.status = getRandomItem(possibleNewStatuses);
           }
         } else {
-          // Update Priority
           const possibleNewPriorities =
             priorityTransitions[updatedTicket.priority] || [];
           if (possibleNewPriorities.length > 0) {
             updatedTicket.priority = getRandomItem(possibleNewPriorities);
           }
         }
-
-        // Always update the timestamp
         updatedTicket.updatedAt = new Date().toISOString();
-
-        // Replace the old ticket with the updated one
         newTickets[ticketIndex] = updatedTicket;
-
         return newTickets;
       });
-    }, getRandomInt(6000, 10000)); // Every 6-10 seconds
-
-    // CRITICAL: Cleanup the interval on component unmount
+    }, getRandomInt(6000, 10000));
     return () => clearInterval(intervalId);
-  }, []); // Empty dependency array means this runs once on mount
-  // ------------------------------------------------
+  }, []);
 
-  // --- State Handlers (no changes) ---
+  // --- All your handlers (filter, search, queue) ---
   const handleFilterChange = (type, value) => {
     setFilters((prev) => ({ ...prev, [type]: value }));
   };
@@ -118,7 +102,7 @@ export default function Board() {
     setQueue({});
   };
 
-  // --- Derived State (no changes) ---
+  // --- All your derived state (visibleTickets, queuedTickets) ---
   const visibleTickets = useMemo(() => {
     const searchLower = search.toLowerCase();
     return tickets.filter((ticket) => {
@@ -146,33 +130,27 @@ export default function Board() {
     return tickets.filter((ticket) => queue[ticket.id]);
   }, [tickets, queue]);
 
-  // --- Render (no changes) ---
+  // --- NEW RENDER LAYOUT ---
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-      <aside className="lg:col-span-1 space-y-6">
-        <div className="bg-zinc-800 p-4 rounded-lg shadow-lg">
-          <h2 className="text-xl font-semibold mb-4">Filters</h2>
-          <div className="space-y-4">
-            <StatusFilter
-              value={filters.status}
-              onChange={(value) => handleFilterChange('status', value)}
-            />
-            <PriorityFilter
-              value={filters.priority}
-              onChange={(value) => handleFilterChange('priority', value)}
-            />
-            <SearchBox value={search} onChange={handleSearchChange} />
-          </div>
-        </div>
-
-        <MyQueueSummary
-          queuedTickets={queuedTickets}
-          onRemove={handleRemoveFromQueue}
-          onClear={handleClearQueue}
+    <div className="flex flex-col space-y-6">
+      
+      {/* --- Filter & Search Bar --- */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-zinc-800 rounded-lg shadow-lg">
+        <StatusFilter
+          value={filters.status}
+          onChange={(value) => handleFilterChange('status', value)}
         />
-      </aside>
+        <PriorityFilter
+          value={filters.priority}
+          onChange={(value) => handleFilterChange('priority', value)}
+        />
+        <div className="md:col-span-1">
+          <SearchBox value={search} onChange={handleSearchChange} />
+        </div>
+      </div>
 
-      <main className="lg:col-span-3">
+      {/* --- Main Content: Tickets --- */}
+      <main>
         <StatusMessage
           loading={loading}
           error={error}
@@ -184,6 +162,15 @@ export default function Board() {
           onAddToQueue={handleAddToQueue}
         />
       </main>
+
+      {/* --- Bottom: My Queue --- */}
+      <aside>
+        <MyQueueSummary
+          queuedTickets={queuedTickets}
+          onRemove={handleRemoveFromQueue}
+          onClear={handleClearQueue}
+        />
+      </aside>
     </div>
   );
 }
