@@ -5,17 +5,31 @@ import TicketList from './TicketList';
 import StatusFilter from './StatusFilter';
 import PriorityFilter from './PriorityFilter';
 import SearchBox from './SearchBox';
+import MyQueueSummary from './MyQueueSummary';
 import StatusMessage from './StatusMessage';
+// --- NEW IMPORT ---
+import {
+  statusTransitions,
+  priorityTransitions,
+} from '../lib/severity';
+
+// --- NEW HELPER FUNCTIONS ---
+function getRandomItem(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function getRandomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+// ----------------------------
 
 export default function Board() {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
-  // --- NEW STATE ---
   const [filters, setFilters] = useState({ status: 'All', priority: 'All' });
   const [search, setSearch] = useState('');
-  // -----------------
+  const [queue, setQueue] = useState({});
 
   // Effect 1: Fetch tickets on mount
   useEffect(() => {
@@ -35,35 +49,88 @@ export default function Board() {
       }
     }
     fetchTickets();
-  }, []); // Empty dependency array runs this once on mount
+  }, []);
 
-  // --- NEW STATE HANDLERS ---
+  // --- NEW EFFECT #2: Simulate live updates ---
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setTickets((currentTickets) => {
+        if (currentTickets.length === 0) return currentTickets;
+
+        // Pick a random ticket to update
+        const ticketIndex = Math.floor(Math.random() * currentTickets.length);
+        const ticketToUpdate = currentTickets[ticketIndex];
+
+        // Create an immutable copy
+        const newTickets = [...currentTickets];
+        let updatedTicket = { ...ticketToUpdate };
+
+        // Randomly decide to update status or priority
+        if (Math.random() > 0.5) {
+          // Update Status
+          const possibleNewStatuses =
+            statusTransitions[updatedTicket.status] || [];
+          if (possibleNewStatuses.length > 0) {
+            updatedTicket.status = getRandomItem(possibleNewStatuses);
+          }
+        } else {
+          // Update Priority
+          const possibleNewPriorities =
+            priorityTransitions[updatedTicket.priority] || [];
+          if (possibleNewPriorities.length > 0) {
+            updatedTicket.priority = getRandomItem(possibleNewPriorities);
+          }
+        }
+
+        // Always update the timestamp
+        updatedTicket.updatedAt = new Date().toISOString();
+
+        // Replace the old ticket with the updated one
+        newTickets[ticketIndex] = updatedTicket;
+
+        return newTickets;
+      });
+    }, getRandomInt(6000, 10000)); // Every 6-10 seconds
+
+    // CRITICAL: Cleanup the interval on component unmount
+    return () => clearInterval(intervalId);
+  }, []); // Empty dependency array means this runs once on mount
+  // ------------------------------------------------
+
+  // --- State Handlers (no changes) ---
   const handleFilterChange = (type, value) => {
     setFilters((prev) => ({ ...prev, [type]: value }));
   };
-
   const handleSearchChange = (e) => {
     setSearch(e.target.value);
   };
-  // --------------------------
+  const handleAddToQueue = (ticketId) => {
+    setQueue((prev) => ({ ...prev, [ticketId]: true }));
+  };
+  const handleRemoveFromQueue = (ticketId) => {
+    setQueue((prev) => {
+      const newQueue = { ...prev };
+      delete newQueue[ticketId];
+      return newQueue;
+    });
+  };
+  const handleClearQueue = () => {
+    setQueue({});
+  };
 
-  // --- NEW DERIVED STATE (MEMOIZED) ---
+  // --- Derived State (no changes) ---
   const visibleTickets = useMemo(() => {
     const searchLower = search.toLowerCase();
-
     return tickets.filter((ticket) => {
-      // Filter by Status
       if (filters.status !== 'All' && ticket.status !== filters.status) {
         return false;
       }
-      // Filter by Priority
       if (
         filters.priority !== 'All' &&
         ticket.priority !== filters.priority
       ) {
         return false;
       }
-      // Filter by Search
       if (
         searchLower &&
         !ticket.title.toLowerCase().includes(searchLower) &&
@@ -73,15 +140,16 @@ export default function Board() {
       }
       return true;
     });
-  }, [tickets, filters, search]); // Re-runs only when these change
-  // ------------------------------------
+  }, [tickets, filters, search]);
 
+  const queuedTickets = useMemo(() => {
+    return tickets.filter((ticket) => queue[ticket.id]);
+  }, [tickets, queue]);
+
+  // --- Render (no changes) ---
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-      {/* Column 1: Filters & Queue (Sidebar) */}
       <aside className="lg:col-span-1 space-y-6">
-        
-        {/* --- UPDATED FILTERS SECTION --- */}
         <div className="bg-zinc-800 p-4 rounded-lg shadow-lg">
           <h2 className="text-xl font-semibold mb-4">Filters</h2>
           <div className="space-y-4">
@@ -96,15 +164,14 @@ export default function Board() {
             <SearchBox value={search} onChange={handleSearchChange} />
           </div>
         </div>
-        {/* -------------------------------- */}
 
-        <div className="bg-zinc-800 p-4 rounded-lg shadow-lg">
-          <h2 className="text-xl font-semibold mb-4">My Queue</h2>
-          {/* Queue component will go here */}
-        </div>
+        <MyQueueSummary
+          queuedTickets={queuedTickets}
+          onRemove={handleRemoveFromQueue}
+          onClear={handleClearQueue}
+        />
       </aside>
 
-      {/* Column 2: Ticket List (Main) */}
       <main className="lg:col-span-3">
         <StatusMessage
           loading={loading}
@@ -112,9 +179,9 @@ export default function Board() {
           isEmpty={!loading && !error && visibleTickets.length === 0}
         />
         <TicketList
-          tickets={visibleTickets} // Pass filtered tickets
-          queue={{}} // We will pass the real queue later
-          onAddToQueue={() => {}} // We will pass the real handler later
+          tickets={visibleTickets}
+          queue={queue}
+          onAddToQueue={handleAddToQueue}
         />
       </main>
     </div>
